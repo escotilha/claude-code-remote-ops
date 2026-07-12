@@ -60,6 +60,48 @@ tiers de modelo e abre uma sessão Claude Code completa — skills, hooks, MCP s
 *forma* da requisição (roles, modelos, tipos de bloco — nunca o texto do prompt),
 transformando o próximo mistério num diagnóstico de uma rodada.
 
+## Como instalar e utilizar
+
+Pré-requisitos: Node 18+, [Claude Code](https://claude.com/claude-code) instalado, e —
+para o ssh-mcp — um host já configurado no seu `~/.ssh/config` (teste antes:
+`ssh <alias> uptime` tem que funcionar sem senha).
+
+### ssh-mcp-server (agente com mãos SSH)
+
+```bash
+git clone https://github.com/escotilha/claude-code-remote-ops.git
+cd claude-code-remote-ops/ssh-mcp-server
+npm install && npm run build
+
+# gera a config (perfil somente-leitura) a partir do seu alias SSH
+bash setup-vps.sh <alias-do-seu-host>
+
+# registre no Claude Code com a linha exata que o script imprime, no formato:
+claude mcp add -s user --transport stdio ssh-mcp -- \
+  node "$PWD/dist/index.js" --config "$HOME/.config/ssh-mcp/<alias>.json"
+```
+
+Abra uma sessão **nova** do Claude Code e peça: *"rode uptime no `<alias>` via
+ssh_execute"*. Se voltar a linha de load average, está pronto. Para liberar
+deploy/restart depois: `bash setup-vps.sh <alias> ops`.
+
+### grok (Claude Code rodando na xAI)
+
+```bash
+cd claude-code-remote-ops/grok
+
+# guarde sua chave xAI (macOS/Keychain — cola a chave quando pedir):
+security add-generic-password -U -s "xai-api-key" -a "$USER" -w
+# (Linux: salve a chave em ~/.config/xai/key com chmod 600 e troque a linha KEY= do launcher)
+
+# coloque os dois arquivos no PATH e teste:
+chmod +x grok && cp grok grok-proxy.mjs ~/bin/
+grok -p "Responda exatamente: ok"
+```
+
+Voltou "ok"? Então `grok` (sem argumentos) abre uma sessão interativa completa —
+suas skills, hooks e MCP servers — com a Grok respondendo.
+
 ## O que este repositório não é
 
 Não é um framework. Não tem 300 ferramentas, não instala daemon, não pede npx na
