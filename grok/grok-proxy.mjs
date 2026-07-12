@@ -60,6 +60,30 @@ function normalizeMessages(body) {
   body.messages = out;
 }
 
+// ToolSearch results contain `tool_reference` blocks — an Anthropic-proprietary
+// content type xAI's deserializer rejects (422, "did not match any variant of
+// untagged enum MessageContent"). The CLI expands referenced tool schemas
+// client-side, so a plain-text stand-in preserves the information for the model.
+function normalizeBlockList(list) {
+  if (!Array.isArray(list)) return list;
+  return list.map((b) =>
+    b && b.type === "tool_reference"
+      ? { type: "text", text: `[tool_reference: ${b.tool_name}]` }
+      : b
+  );
+}
+
+function normalizeBlockTypes(body) {
+  if (!Array.isArray(body.messages)) return;
+  for (const m of body.messages) {
+    m.content = normalizeBlockList(m.content);
+    if (!Array.isArray(m.content)) continue;
+    for (const b of m.content) {
+      if (b && b.type === "tool_result") b.content = normalizeBlockList(b.content);
+    }
+  }
+}
+
 function patchBody(raw) {
   try {
     const body = JSON.parse(raw);
@@ -67,6 +91,7 @@ function patchBody(raw) {
       for (const t of body.tools) if (t && t.input_schema) normalizeSchema(t.input_schema);
     }
     normalizeMessages(body);
+    normalizeBlockTypes(body);
     return JSON.stringify(body);
   } catch { return raw; } // non-JSON: forward untouched
 }
@@ -109,7 +134,15 @@ const server = http.createServer((req, res) => {
           ur.on("end", () => {
             const errBody = Buffer.concat(ec);
             console.error(`[grok-proxy] ${req.method} ${req.url} -> ${ur.statusCode}: ${errBody.toString().slice(0, 500)}`);
-            if (ur.statusCode < 500) console.error(`[grok-proxy]   request shape: ${shapeOf(body)}`);
+            if (ur.statusCode < 500 && body && [400, 413, 422].includes(ur.statusCode)) {
+              console.error(`[grok-proxy]   request shape: ${shapeOf(body)}`);
+              // Capture the exact rejected body for diagnosis (0600, local only).
+              import("node:fs").then((fs) => {
+                const p = `/tmp/grok-proxy-fail-${Date.now()}.json`;
+                fs.writeFileSync(p, body, { mode: 0o600 });
+                console.error(`[grok-proxy]   rejected body captured: ${p}`);
+              }).catch(() => {});
+            }
             res.writeHead(ur.statusCode, sanitize(ur.headers));
             res.end(errBody);
           });
