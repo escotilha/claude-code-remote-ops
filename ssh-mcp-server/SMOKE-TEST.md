@@ -38,6 +38,13 @@ Report each result.
 fail with `Error:`; upload is disabled. That proves the full path:
 this machine → gate → ssh2 → remote user, with allow/deny and SFTP policy in front.
 
+If `auditLogPath` is set (setup default), confirm events landed:
+
+```bash
+tail -n 5 ~/.local/state/ssh-mcp/audit.jsonl | jq .
+# expect gateAllowed:true for uptime, false for the blocked attempts
+```
+
 Troubleshooting:
 - *Tools absent* → session started before registration; restart the session.
 - *Auth/passphrase error* → load the key into `ssh-agent`, or add `"passphrase"`

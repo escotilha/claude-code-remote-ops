@@ -2,6 +2,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { AuditLog } from "./audit.js";
 import { loadConfig, type Config, type Connection } from "./config.js";
 import { checkCommand, checkTransfer, effectiveAllow } from "./security.js";
 import { SshPool } from "./ssh.js";
@@ -56,6 +57,7 @@ function toolError(message: string) {
 async function main(): Promise<void> {
   const config = loadConfig(getConfigPath());
   const pool = new SshPool();
+  const audit = new AuditLog(config.auditLogPath);
 
   // Warn (on stderr, not stdout, so we don't corrupt the stdio protocol) when a
   // connection has no allow list and no global allow list.
@@ -86,9 +88,13 @@ async function main(): Promise<void> {
     }
   }
 
+  if (audit.enabled) {
+    console.error(`[ssh-mcp] audit log: ${audit.path}`);
+  }
+
   const server = new McpServer({
     name: "ssh-mcp-server",
-    version: "1.1.0",
+    version: "1.2.0",
   });
 
   server.registerTool(
@@ -106,6 +112,7 @@ async function main(): Promise<void> {
       },
     },
     async () => {
+      const t0 = Date.now();
       const list = Object.entries(config.connections).map(([name, c]) => {
         const transfers = c.transfers ?? config.transfers ?? {};
         return {
@@ -118,6 +125,11 @@ async function main(): Promise<void> {
         };
       });
       const output = { count: list.length, connections: list };
+      audit.record({
+        tool: "ssh_list_connections",
+        ok: true,
+        durationMs: Date.now() - t0,
+      });
       return {
         content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
         structuredContent: output,
@@ -165,15 +177,36 @@ Notes:
       },
     },
     async ({ command, connection, timeout_ms }) => {
+      const t0 = Date.now();
+      let connName: string | undefined;
       try {
         const { name, conn } = resolveConnection(config, connection);
+        connName = name;
         const gate = checkCommand(command, config, conn);
         if (!gate.allowed) {
+          audit.record({
+            tool: "ssh_execute",
+            connection: name,
+            gateAllowed: false,
+            gateReason: gate.reason,
+            command,
+            durationMs: Date.now() - t0,
+          });
           return toolError(gate.reason ?? "Command blocked");
         }
         const timeout =
           timeout_ms ?? conn.timeoutMs ?? config.defaultTimeoutMs;
         const result = await pool.exec(name, conn, command, timeout);
+        audit.record({
+          tool: "ssh_execute",
+          connection: name,
+          gateAllowed: true,
+          command,
+          exitCode: result.code,
+          signal: result.signal,
+          timedOut: result.timedOut,
+          durationMs: Date.now() - t0,
+        });
         const output = {
           ...result,
           stdout: truncate(result.stdout),
@@ -184,6 +217,13 @@ Notes:
           structuredContent: output,
         };
       } catch (e) {
+        audit.record({
+          tool: "ssh_execute",
+          connection: connName,
+          command,
+          error: (e as Error).message,
+          durationMs: Date.now() - t0,
+        });
         return toolError((e as Error).message);
       }
     }
@@ -213,8 +253,11 @@ Notes:
       },
     },
     async ({ connection, local_path, remote_path }) => {
+      const t0 = Date.now();
+      let connName: string | undefined;
       try {
         const { name, conn } = resolveConnection(config, connection);
+        connName = name;
         const gate = checkTransfer(
           "upload",
           local_path,
@@ -223,15 +266,41 @@ Notes:
           conn
         );
         if (!gate.allowed) {
+          audit.record({
+            tool: "ssh_upload",
+            connection: name,
+            gateAllowed: false,
+            gateReason: gate.reason,
+            localPath: local_path,
+            remotePath: remote_path,
+            durationMs: Date.now() - t0,
+          });
           return toolError(gate.reason ?? "Upload blocked");
         }
         await pool.transfer(name, conn, "upload", local_path, remote_path);
+        audit.record({
+          tool: "ssh_upload",
+          connection: name,
+          gateAllowed: true,
+          localPath: local_path,
+          remotePath: remote_path,
+          ok: true,
+          durationMs: Date.now() - t0,
+        });
         const output = { ok: true, local_path, remote_path };
         return {
           content: [{ type: "text", text: JSON.stringify(output) }],
           structuredContent: output,
         };
       } catch (e) {
+        audit.record({
+          tool: "ssh_upload",
+          connection: connName,
+          localPath: local_path,
+          remotePath: remote_path,
+          error: (e as Error).message,
+          durationMs: Date.now() - t0,
+        });
         return toolError((e as Error).message);
       }
     }
@@ -252,8 +321,11 @@ Notes:
       },
     },
     async ({ connection, local_path, remote_path }) => {
+      const t0 = Date.now();
+      let connName: string | undefined;
       try {
         const { name, conn } = resolveConnection(config, connection);
+        connName = name;
         const gate = checkTransfer(
           "download",
           local_path,
@@ -262,15 +334,41 @@ Notes:
           conn
         );
         if (!gate.allowed) {
+          audit.record({
+            tool: "ssh_download",
+            connection: name,
+            gateAllowed: false,
+            gateReason: gate.reason,
+            localPath: local_path,
+            remotePath: remote_path,
+            durationMs: Date.now() - t0,
+          });
           return toolError(gate.reason ?? "Download blocked");
         }
         await pool.transfer(name, conn, "download", local_path, remote_path);
+        audit.record({
+          tool: "ssh_download",
+          connection: name,
+          gateAllowed: true,
+          localPath: local_path,
+          remotePath: remote_path,
+          ok: true,
+          durationMs: Date.now() - t0,
+        });
         const output = { ok: true, remote_path, local_path };
         return {
           content: [{ type: "text", text: JSON.stringify(output) }],
           structuredContent: output,
         };
       } catch (e) {
+        audit.record({
+          tool: "ssh_download",
+          connection: connName,
+          localPath: local_path,
+          remotePath: remote_path,
+          error: (e as Error).message,
+          durationMs: Date.now() - t0,
+        });
         return toolError((e as Error).message);
       }
     }

@@ -1,6 +1,6 @@
 {
   "name": "ssh-mcp-server",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "MCP server that lets an LLM agent run commands and transfer files on remote hosts over SSH, with named connections and command allow/deny lists.",
   "type": "module",
   "bin": {

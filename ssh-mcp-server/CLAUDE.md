@@ -57,7 +57,8 @@ the Inspector, and a denied command (e.g. `rm -rf /tmp/x`) returns an error
 ## Project layout
 
 - `src/config.ts` — load + Zod-validate the JSON config
-- `src/security.ts` — allow/deny gate (`checkCommand`)
+- `src/security.ts` — allow/deny gate (`checkCommand` / `checkTransfer`)
+- `src/audit.ts` — optional append-only JSONL audit (`auditLogPath`)
 - `src/ssh.ts` — connection pool, exec, SFTP
 - `src/index.ts` — tool registration + stdio transport
 - `README.md` — setup, client wiring, extension points
@@ -72,10 +73,11 @@ the Inspector, and a denied command (e.g. `rm -rf /tmp/x`) returns an error
 - **SFTP is fail-closed** (`uploadEnabled`/`downloadEnabled` default false). Path
   rules live in `transfers`; gate in `checkTransfer` before `pool.transfer`.
 - Tool failures that are policy blocks should return **`isError: true`**.
+- Audit log must never record passwords, key material, host/user, or stdout/stderr.
 
 ## When adding features
 
 Do them one at a time, each isolated to the relevant module, each followed by
-`npm test` + Inspector check before moving on. Next steps: audit log for every
-tool call, then (only if a task demands it) interactive sessions or reverse-tunnel
-mode. See `../docs/PR-PLAN.md`.
+`npm test` + Inspector check before moving on. Next steps: packaging/docs (PR3),
+then (only if a task demands it) interactive sessions or reverse-tunnel mode.
+See `../docs/PR-PLAN.md`.
