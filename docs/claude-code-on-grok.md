@@ -255,8 +255,12 @@ untouched, the sentinel gets swapped.
 
 Caveats: xAI allowlists the OAuth API surface by subscription tier — if inference
 returns 403 after a successful login, your tier isn't enabled and you're back to
-the API key. And `security`/Keychain is macOS-only; on Linux adapt
-`keychainRead`/`keychainWrite` to `pass` or a `chmod 600` file.
+the API key. `security`/Keychain is macOS-only; on Linux adapt
+`keychainRead`/`keychainWrite` to `pass` or a `chmod 600` file. And on a
+**multi-user** machine, note that the sentinel is a well-known constant: any local
+user who can reach 127.0.0.1 can spend your subscription quota through the proxy
+(they can't extract the token — the upstream is pinned to `api.x.ai` — but
+consumption is enough to care on shared hosts; bind-limit or firewall accordingly).
 
 ## Install
 

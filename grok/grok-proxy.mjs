@@ -26,10 +26,12 @@
 
 import http from "node:http";
 import https from "node:https";
+import os from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 const execFileP = promisify(execFile);
+const ACCOUNT = process.env.USER || os.userInfo().username;
 
 // ---- OAuth (SuperGrok subscription) -----------------------------------------
 const OAUTH_SENTINEL = "grok-oauth-keychain";
@@ -39,20 +41,33 @@ const OAUTH_TOKEN_URL = "https://auth.x.ai/oauth2/token";
 const REFRESH_SKEW_MS = 120_000;
 
 let oauthCache = null;      // { access_token, refresh_token, expires_at }
-let oauthInflight = null;   // dedupes concurrent refreshes
+let oauthInflight = null;   // dedupes concurrent refreshes (per-process; two proxies
+                            // on custom ports could still race a rotating refresh
+                            // token — acceptable for the default single 8317 proxy)
 
 async function keychainRead() {
-  const { stdout } = await execFileP("security", [
-    "find-generic-password", "-s", OAUTH_SERVICE, "-a", process.env.USER, "-w",
-  ]);
-  return JSON.parse(stdout.trim());
+  try {
+    const { stdout } = await execFileP("security", [
+      "find-generic-password", "-s", OAUTH_SERVICE, "-a", ACCOUNT, "-w",
+    ]);
+    return JSON.parse(stdout.trim());
+  } catch {
+    // Never propagate raw errors from here: exec failures embed the full argv
+    // in error.message, and callers log/return that message.
+    throw new Error("no readable OAuth tokens in Keychain — run grok-login");
+  }
 }
 
 async function keychainWrite(tokens) {
-  await execFileP("security", [
-    "add-generic-password", "-U", "-s", OAUTH_SERVICE, "-a", process.env.USER,
-    "-w", JSON.stringify(tokens),
-  ]);
+  try {
+    await execFileP("security", [
+      "add-generic-password", "-U", "-s", OAUTH_SERVICE, "-a", ACCOUNT,
+      "-w", JSON.stringify(tokens),
+    ]);
+  } catch (e) {
+    // Redact: e.message contains the argv, i.e. the whole token JSON.
+    throw new Error(`keychain write failed (security exit ${e.code ?? "?"})`);
+  }
 }
 
 async function refreshTokens(old) {
@@ -75,7 +90,14 @@ async function refreshTokens(old) {
     expires_at: Date.now() + (body.expires_in || 3600) * 1000,
     scope: body.scope || old.scope,
   };
-  await keychainWrite(next);
+  // Persist rotated tokens, but never discard a successful refresh over a
+  // failed write: if rotation invalidated the old refresh token, the in-memory
+  // copy is the only live one — losing it would brick the grant mid-session.
+  try {
+    await keychainWrite(next);
+  } catch (e) {
+    console.error(`[grok-proxy] warning: ${e.message} — rotated tokens held in memory only; run grok-login before restarting the proxy`);
+  }
   return next;
 }
 
@@ -205,9 +227,11 @@ const server = http.createServer((req, res) => {
     delete headers["accept-encoding"]; // keep upstream responses uncompressed (loggable)
     if (body) headers["content-length"] = Buffer.byteLength(body);
 
+    let usedOAuth = false;
     if (headers.authorization === `Bearer ${OAUTH_SENTINEL}`) {
       try {
         headers.authorization = `Bearer ${await getOAuthToken()}`;
+        usedOAuth = true;
       } catch (e) {
         console.error(`[grok-proxy] oauth: ${e.message}`);
         res.writeHead(401, { "content-type": "application/json" });
@@ -219,6 +243,10 @@ const server = http.createServer((req, res) => {
     const up = https.request(
       { hostname: UPSTREAM.hostname, port: 443, path: req.url, method: req.method, headers },
       (ur) => {
+        // Revoked/re-issued token (e.g. a fresh grok-login mid-session): drop
+        // the cache so the next request re-reads Keychain instead of serving
+        // the dead token until its expiry.
+        if (ur.statusCode === 401 && usedOAuth) oauthCache = null;
         if (ur.statusCode >= 400) {
           const ec = [];
           ur.on("data", (c) => ec.push(c));

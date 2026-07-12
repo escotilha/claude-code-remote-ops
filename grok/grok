@@ -14,6 +14,10 @@
 set -uo pipefail
 
 AUTH_MODE="${GROK_AUTH:-}"
+if [ -n "$AUTH_MODE" ] && [ "$AUTH_MODE" != "oauth" ] && [ "$AUTH_MODE" != "key" ]; then
+  echo "grok: invalid GROK_AUTH='$AUTH_MODE' (expected 'oauth' or 'key')" >&2
+  exit 2
+fi
 if [ -z "$AUTH_MODE" ]; then
   if security find-generic-password -s "xai-oauth" -a "$USER" >/dev/null 2>&1; then
     AUTH_MODE="oauth"
