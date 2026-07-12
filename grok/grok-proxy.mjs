@@ -136,12 +136,14 @@ const server = http.createServer((req, res) => {
             console.error(`[grok-proxy] ${req.method} ${req.url} -> ${ur.statusCode}: ${errBody.toString().slice(0, 500)}`);
             if (ur.statusCode < 500 && body && [400, 413, 422].includes(ur.statusCode)) {
               console.error(`[grok-proxy]   request shape: ${shapeOf(body)}`);
-              // Capture the exact rejected body for diagnosis (0600, local only).
-              import("node:fs").then((fs) => {
-                const p = `/tmp/grok-proxy-fail-${Date.now()}.json`;
-                fs.writeFileSync(p, body, { mode: 0o600 });
-                console.error(`[grok-proxy]   rejected body captured: ${p}`);
-              }).catch(() => {});
+              // Full body may contain prompts — only dump when explicitly requested.
+              if (process.env.GROK_PROXY_DUMP === "1") {
+                import("node:fs").then((fs) => {
+                  const p = `/tmp/grok-proxy-fail-${Date.now()}.json`;
+                  fs.writeFileSync(p, body, { mode: 0o600 });
+                  console.error(`[grok-proxy]   rejected body captured: ${p}`);
+                }).catch(() => {});
+              }
             }
             res.writeHead(ur.statusCode, sanitize(ur.headers));
             res.end(errBody);

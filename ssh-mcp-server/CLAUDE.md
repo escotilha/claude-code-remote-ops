@@ -62,9 +62,20 @@ the Inspector, and a denied command (e.g. `rm -rf /tmp/x`) returns an error
 - `src/index.ts` — tool registration + stdio transport
 - `README.md` — setup, client wiring, extension points
 
+## Security invariants (do not weaken)
+
+- **Deny is a union** (global ∪ connection ∪ builtins). Never let connection-level
+  deny replace/wipe global deny.
+- **Invalid deny regexes fail closed** (block). Invalid allow regexes simply do not match.
+- When an allow list is active, **reject shell metacharacters** so composition cannot
+  bypass prefix allows.
+- **SFTP is fail-closed** (`uploadEnabled`/`downloadEnabled` default false). Path
+  rules live in `transfers`; gate in `checkTransfer` before `pool.transfer`.
+- Tool failures that are policy blocks should return **`isError: true`**.
+
 ## When adding features
 
-Do them one at a time, each isolated to the relevant module, each followed by a
-clean build + Inspector check before moving on. Likely next steps, in order of
-value: hardening checklist in the README, an audit log for every `ssh_execute`,
-then (only if a task demands it) interactive sessions or reverse-tunnel mode.
+Do them one at a time, each isolated to the relevant module, each followed by
+`npm test` + Inspector check before moving on. Next steps: audit log for every
+tool call, then (only if a task demands it) interactive sessions or reverse-tunnel
+mode. See `../docs/PR-PLAN.md`.

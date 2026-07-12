@@ -1,0 +1,23 @@
+# Dependencies & build
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Local secrets / machine configs (never commit)
+.env
+.env.*
+**/ssh-config.json
+**/*-config.local.json
+*.pem
+id_rsa
+id_ed25519
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Logs / dumps
+*.log
+/tmp/
