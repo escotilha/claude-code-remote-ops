@@ -1,0 +1,75 @@
+#!/usr/bin/env node
+// grok-login — one-time xAI OAuth device-code login for the grok launcher.
+//
+// Signs in with a SuperGrok (or X Premium+) subscription instead of a
+// pay-per-token API key: prints a verification URL, waits for browser
+// approval, then stores the token set in macOS Keychain (service
+// "xai-oauth", a JSON blob). grok-proxy refreshes it from there — you log
+// in once and stay signed in until you revoke access at accounts.x.ai.
+//
+// The flow is headless-friendly (device code, no local callback port):
+// run it over SSH and open the printed URL on any device.
+//
+// Verified 2026-07-12: xAI's Anthropic-compatible /v1/messages accepts
+// this OAuth bearer directly (HTTP 200), so no request translation is
+// needed — the proxy only swaps the auth header.
+
+import { execFileSync } from "node:child_process";
+
+const CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828"; // public desktop client ID (not a secret)
+const SCOPE = "openid profile email offline_access grok-cli:access api:access";
+const DEVICE_URL = "https://auth.x.ai/oauth2/device/code";
+const TOKEN_URL = "https://auth.x.ai/oauth2/token";
+
+async function form(url, params) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams(params),
+  });
+  return { status: res.status, body: await res.json().catch(() => ({})) };
+}
+
+const { status, body: dc } = await form(DEVICE_URL, { client_id: CLIENT_ID, scope: SCOPE });
+if (status !== 200 || !dc.device_code) {
+  console.error(`grok-login: device-code request failed (HTTP ${status}): ${JSON.stringify(dc)}`);
+  process.exit(5);
+}
+
+const url = dc.verification_uri_complete || dc.verification_uri;
+console.log(`\nOpen this URL in any browser and approve access:\n\n  ${url}\n`);
+console.log(`Code: ${dc.user_code}   (expires in ${Math.round((dc.expires_in || 900) / 60)} min)\n`);
+try { execFileSync("open", [url], { stdio: "ignore" }); } catch { /* headless: URL printed above */ }
+
+let interval = (dc.interval || 5) * 1000;
+const deadline = Date.now() + (dc.expires_in || 900) * 1000;
+let tokens = null;
+while (Date.now() < deadline) {
+  await new Promise((r) => setTimeout(r, interval));
+  const { status, body } = await form(TOKEN_URL, {
+    grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+    device_code: dc.device_code,
+    client_id: CLIENT_ID,
+  });
+  if (status === 200 && body.access_token) { tokens = body; break; }
+  if (body.error === "slow_down") interval += 5000;
+  else if (body.error !== "authorization_pending") {
+    console.error(`grok-login: ${body.error || `HTTP ${status}`} ${body.error_description || ""}`);
+    process.exit(5);
+  }
+}
+if (!tokens) { console.error("grok-login: approval timed out — run again."); process.exit(5); }
+
+execFileSync("security", [
+  "add-generic-password", "-U",
+  "-s", "xai-oauth",
+  "-a", process.env.USER,
+  "-w", JSON.stringify({
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+    expires_at: Date.now() + (tokens.expires_in || 3600) * 1000,
+    scope: tokens.scope,
+  }),
+]);
+console.log("Signed in — tokens stored in Keychain (service 'xai-oauth').");
+console.log("`grok` now uses your SuperGrok subscription. To go back to the API key: GROK_AUTH=key grok");

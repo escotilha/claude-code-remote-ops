@@ -11,13 +11,93 @@
 //
 // This proxy buffers each JSON request, normalizes every object schema node to
 // carry a `required` array, forwards to api.x.ai, and streams the response
-// back (SSE included). Auth headers pass through untouched — no key stored.
+// back (SSE included).
+//
+// Auth: two modes, decided per request by the incoming Authorization header.
+//   - API key ("Bearer xai-..."): passed through untouched — no key stored.
+//   - OAuth sentinel ("Bearer grok-oauth-keychain", set by the launcher when
+//     grok-login tokens exist): swapped for the real SuperGrok OAuth access
+//     token from Keychain (service "xai-oauth"), refreshed automatically
+//     before expiry. xAI's Anthropic-compatible endpoint accepts this bearer
+//     directly (verified 2026-07-12), so nothing else changes.
 //
 // Zero dependencies; 127.0.0.1 only. Started/stopped by tools/grok.
 // Upstream 4xx/5xx bodies are logged to stderr (schema paths, not prompts).
 
 import http from "node:http";
 import https from "node:https";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileP = promisify(execFile);
+
+// ---- OAuth (SuperGrok subscription) -----------------------------------------
+const OAUTH_SENTINEL = "grok-oauth-keychain";
+const OAUTH_SERVICE = "xai-oauth";
+const OAUTH_CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828"; // public desktop client ID
+const OAUTH_TOKEN_URL = "https://auth.x.ai/oauth2/token";
+const REFRESH_SKEW_MS = 120_000;
+
+let oauthCache = null;      // { access_token, refresh_token, expires_at }
+let oauthInflight = null;   // dedupes concurrent refreshes
+
+async function keychainRead() {
+  const { stdout } = await execFileP("security", [
+    "find-generic-password", "-s", OAUTH_SERVICE, "-a", process.env.USER, "-w",
+  ]);
+  return JSON.parse(stdout.trim());
+}
+
+async function keychainWrite(tokens) {
+  await execFileP("security", [
+    "add-generic-password", "-U", "-s", OAUTH_SERVICE, "-a", process.env.USER,
+    "-w", JSON.stringify(tokens),
+  ]);
+}
+
+async function refreshTokens(old) {
+  const res = await fetch(OAUTH_TOKEN_URL, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: old.refresh_token,
+      client_id: OAUTH_CLIENT_ID,
+    }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (res.status !== 200 || !body.access_token) {
+    throw new Error(`token refresh failed (HTTP ${res.status} ${body.error || ""}) — re-run grok-login`);
+  }
+  const next = {
+    access_token: body.access_token,
+    refresh_token: body.refresh_token || old.refresh_token, // xAI may rotate it
+    expires_at: Date.now() + (body.expires_in || 3600) * 1000,
+    scope: body.scope || old.scope,
+  };
+  await keychainWrite(next);
+  return next;
+}
+
+async function getOAuthToken() {
+  if (oauthCache && Date.now() < oauthCache.expires_at - REFRESH_SKEW_MS) {
+    return oauthCache.access_token;
+  }
+  if (!oauthInflight) {
+    oauthInflight = (async () => {
+      try {
+        let tokens = await keychainRead(); // a fresh grok-login may have rewritten it
+        if (Date.now() >= tokens.expires_at - REFRESH_SKEW_MS) tokens = await refreshTokens(tokens);
+        oauthCache = tokens;
+        return tokens.access_token;
+      } finally {
+        oauthInflight = null;
+      }
+    })();
+  }
+  return oauthInflight;
+}
+// -----------------------------------------------------------------------------
 
 const PORT = Number(process.env.GROK_PROXY_PORT || 8317);
 const UPSTREAM = new URL(process.env.GROK_UPSTREAM || "https://api.x.ai");
@@ -117,13 +197,24 @@ function shapeOf(raw) {
 const server = http.createServer((req, res) => {
   const chunks = [];
   req.on("data", (c) => chunks.push(c));
-  req.on("end", () => {
+  req.on("end", async () => {
     const raw = Buffer.concat(chunks).toString("utf8");
     const body = raw.length ? patchBody(raw) : "";
     const headers = { ...req.headers, host: UPSTREAM.host };
     delete headers["content-length"];
     delete headers["accept-encoding"]; // keep upstream responses uncompressed (loggable)
     if (body) headers["content-length"] = Buffer.byteLength(body);
+
+    if (headers.authorization === `Bearer ${OAUTH_SENTINEL}`) {
+      try {
+        headers.authorization = `Bearer ${await getOAuthToken()}`;
+      } catch (e) {
+        console.error(`[grok-proxy] oauth: ${e.message}`);
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end(JSON.stringify({ type: "error", error: { type: "authentication_error", message: `grok-proxy OAuth: ${e.message}` } }));
+        return;
+      }
+    }
 
     const up = https.request(
       { hostname: UPSTREAM.hostname, port: 443, path: req.url, method: req.method, headers },
