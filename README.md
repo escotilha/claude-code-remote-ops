@@ -24,10 +24,13 @@ consegue fazer:
   na máquina que roda o servidor (`chmod 600`, fora de qualquer repo git). O agente
   só conhece o apelido da conexão. Não há o que vazar numa transcrição.
 - **Não executa o que a política proíbe.** Cada comando passa por duas listas de
-  regex antes de qualquer conexão: `deny` sempre vence (`rm -rf`, `shutdown`,
-  `mkfs`, desligar firewall ou o próprio SSH) e `allow`, quando existe, exige
-  correspondência. O padrão gerado pelo setup é **somente leitura**: status, logs,
-  disco, uptime. Uma sessão confusa consegue diagnosticar; não consegue destruir.
+  regex antes de qualquer conexão: `deny` sempre vence (lista do config ∪ padrões
+  embutidos: `rm -r/-f`, `shutdown`, `mkfs`, `dd`, firewall, matar o SSH, …) e
+  `allow`, quando existe, exige correspondência. Com allow ativo, metacaracteres
+  de shell (`;|&$()` …) são rejeitados — não dá para esticar `uptime` em
+  `uptime && rm`. SFTP começa **desligado**; o setup readonly só libera download
+  de `/var/log` para um diretório local isolado. Uma sessão confusa consegue
+  diagnosticar; não consegue destruir nem exfiltrar segredos por upload.
 - **Não decide o próprio raio de ação.** Ampliar de `readonly` para `ops`
   (deploy/restart) é uma regeneração deliberada da config, feita por um humano —
   não algo que o modelo possa se convencer a fazer no meio de uma tarefa.
@@ -119,11 +122,12 @@ sem compartilhar as chaves.
 ## Conteúdo do repositório
 
 - `ssh-mcp-server/` — código completo do servidor (TypeScript). `npm install &&
-  npm run build`, depois `bash setup-vps.sh <alias-ssh>` conecta a um host do seu
+  npm test`, depois `bash setup-vps.sh <alias-ssh>` conecta a um host do seu
   `~/.ssh/config`.
 - `grok/grok-proxy.mjs` + `grok/grok` — proxy e launcher para Claude Code sobre Grok.
-- `docs/` — os dois writeups completos (modelo de segurança do ssh-mcp; a
-  depuração do Claude Code na xAI).
+- `docs/` — writeups (modelo de segurança do ssh-mcp; depuração Claude Code na xAI)
+  e o [plano de PRs](docs/PR-PLAN.md) de hardening.
+
 
 ## Segurança e licença
 

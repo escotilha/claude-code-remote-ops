@@ -2,19 +2,28 @@
 
 🇧🇷 [Versão em português (página principal): README.md](README.md)
 
-Built 2026-07-12 on a Mac Mini. Contents:
+Built 2026-07-12 on a Mac Mini; security hardenings in `docs/PR-PLAN.md`.
 
-- `docs/ssh-mcp-server.md` — what the SSH MCP server does and the security model.
-- `docs/claude-code-on-grok.md` — full writeup: running Claude Code on xAI Grok,
-  the two validation quirks that break it, and the proxy fix.
-- `ssh-mcp-server/` — complete server source (TypeScript). `npm install && npm run
-  build`, then `bash setup-vps.sh <ssh-alias>` wires it to a host from your
-  ~/.ssh/config. Read-only command allow-list by default.
-- `grok/grok-proxy.mjs` — zero-dep localhost proxy that makes Claude Code work
-  against api.x.ai (fixes tool-schema `required` + system-role messages).
-- `grok/grok` — launcher: starts the proxy, maps model tiers, launches a fresh
-  Claude Code session on Grok. macOS Keychain for the key; adapt the KEY= line
-  for Linux.
+## Pieces
 
-Host names/IPs in docs are redacted placeholders. No keys or configs included —
-credentials always live outside this bundle.
+- **`ssh-mcp-server/`** — MCP server (TypeScript) giving an agent SSH hands with
+  structural guardrails: credentials never reach the model; command allow/deny
+  (+ shell-metacharacter reject); SFTP fail-closed with path rules; optional
+  host-key pinning.  
+  `cd ssh-mcp-server && npm install && npm test && bash setup-vps.sh <ssh-alias>`
+- **`grok/`** — `grok-proxy.mjs` (localhost schema normalizer for api.x.ai) +
+  `grok` launcher (Keychain key, model-tier map, full Claude Code session).
+- **`docs/`** — security model, Grok debugging writeup, and the PR roadmap.
+
+## Security defaults (ssh-mcp)
+
+| Control | Default |
+|---------|---------|
+| Command profile | **readonly** (status/logs/disk/uptime) |
+| Shell `; && \| $()` chains | **blocked** when allow list is set |
+| SFTP upload | **off** |
+| SFTP download | `/var/log/*` only → `~/agent-transfers/<alias>/` |
+| Host key | pinned when `ssh-keyscan` works |
+
+Host names/IPs in docs are placeholders. No keys or live configs in the repo.
+

@@ -1,14 +1,45 @@
 {
   "defaultConnection": "prod",
   "defaultTimeoutMs": 30000,
-  "allow": ["^ls", "^df", "^cat ", "^systemctl status", "^docker ps"],
-  "deny": ["rm -rf", "shutdown", "reboot", "mkfs", "dd if="],
+  "includeBuiltinDeny": true,
+  "allow": [
+    "^ls ",
+    "^df -h$",
+    "^cat /var/log/",
+    "^systemctl status ",
+    "^docker ps$",
+    "^uptime$"
+  ],
+  "deny": [
+    "rm -rf",
+    "shutdown",
+    "reboot",
+    "poweroff",
+    "halt",
+    "mkfs",
+    "dd if=",
+    "ufw reset",
+    "ufw disable",
+    "systemctl (stop|disable|mask) ssh",
+    "> /etc",
+    "chmod -R",
+    "chown -R"
+  ],
+  "transfers": {
+    "uploadEnabled": false,
+    "downloadEnabled": true,
+    "remoteAllow": ["^/var/log/"],
+    "remoteDeny": ["\\.env$", "id_rsa", "id_ed25519", "\\.pem$"],
+    "localRoot": "/home/you/agent-transfers/prod"
+  },
   "connections": {
     "prod": {
       "host": "10.0.0.5",
       "port": 22,
       "username": "deploy",
-      "privateKeyPath": "/home/you/.ssh/id_ed25519"
+      "privateKeyPath": "/home/you/.ssh/id_ed25519",
+      "hostFingerprint": "SHA256:replace_with_ssh_keygen_lf_output",
+      "strictHostKeyChecking": true
     }
   }
 }
