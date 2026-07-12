@@ -63,6 +63,13 @@ tiers de modelo e abre uma sessão Claude Code completa — skills, hooks, MCP s
 *forma* da requisição (roles, modelos, tipos de bloco — nunca o texto do prompt),
 transformando o próximo mistério num diagnóstico de uma rodada.
 
+Autenticação em dois modos: chave de API (pay-per-token) ou **OAuth com assinatura
+SuperGrok / X Premium+** — o `grok-login` faz o device-code flow uma vez (aprova
+no navegador de qualquer dispositivo, sem porta de callback), guarda os tokens no
+Keychain, e o proxy injeta e renova o bearer automaticamente. Descoberta útil: o
+endpoint Anthropic-compatível da xAI aceita esse bearer OAuth diretamente — a
+inferência passa a consumir a cota da assinatura em vez de gasto por token.
+
 ## Como instalar e utilizar
 
 Pré-requisitos: Node 18+, [Claude Code](https://claude.com/claude-code) instalado, e —
@@ -93,12 +100,17 @@ deploy/restart depois: `bash setup-vps.sh <alias> ops`.
 ```bash
 cd claude-code-remote-ops/grok
 
-# guarde sua chave xAI (macOS/Keychain — cola a chave quando pedir):
+# autenticação — escolha UMA (tendo as duas, OAuth vence; force com GROK_AUTH=key):
+
+# (a) assinatura SuperGrok / X Premium+ (OAuth, sem chave de API):
+./grok-login
+
+# (b) chave de API xAI (macOS/Keychain — cola a chave quando pedir):
 security add-generic-password -U -s "xai-api-key" -a "$USER" -w
 # (Linux: salve a chave em ~/.config/xai/key com chmod 600 e troque a linha KEY= do launcher)
 
-# coloque os dois arquivos no PATH e teste:
-chmod +x grok && cp grok grok-proxy.mjs ~/bin/
+# coloque os três arquivos no PATH e teste:
+chmod +x grok grok-login && cp grok grok-proxy.mjs grok-login ~/bin/
 grok -p "Responda exatamente: ok"
 ```
 
@@ -124,7 +136,7 @@ sem compartilhar as chaves.
 - `ssh-mcp-server/` — código completo do servidor (TypeScript). `npm install &&
   npm test`, depois `bash setup-vps.sh <alias-ssh>` conecta a um host do seu
   `~/.ssh/config`.
-- `grok/grok-proxy.mjs` + `grok/grok` — proxy e launcher para Claude Code sobre Grok.
+- `grok/grok-proxy.mjs` + `grok/grok` + `grok/grok-login` — proxy, launcher e login OAuth para Claude Code sobre Grok.
 - `docs/` — writeups (modelo de segurança do ssh-mcp; depuração Claude Code na xAI),
   [audit log](docs/audit-log.md), e o [plano de PRs](docs/PR-PLAN.md) de hardening.
 

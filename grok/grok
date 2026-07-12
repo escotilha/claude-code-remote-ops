@@ -1,15 +1,42 @@
 #!/usr/bin/env bash
 # grok — launch a fresh Claude Code session backed by xAI Grok.
 # Usage:  grok [any claude flags/args]
+#
+# Auth (picked automatically, override with GROK_AUTH=oauth|key):
+#   oauth — SuperGrok/X Premium+ subscription via grok-login (preferred when
+#           Keychain service "xai-oauth" exists). The launcher passes a
+#           sentinel token; grok-proxy swaps in the real OAuth bearer and
+#           refreshes it, so long sessions never see an expired token.
+#           NOTE: after upgrading to an OAuth-aware proxy, kill any stale
+#           pre-upgrade proxy still listening (pkill -f grok-proxy.mjs).
+#   key   — pay-per-token API key from Keychain service "xai-api-key".
 
 set -uo pipefail
 
-KEY="$(security find-generic-password -s "xai-api-key" -a "$USER" -w 2>/dev/null)"
-if [ -z "$KEY" ]; then
-  echo "grok: no xAI key in Keychain (service 'xai-api-key', account $USER)." >&2
-  echo "Store it once with:" >&2
-  echo "  security add-generic-password -U -s \"xai-api-key\" -a \"\$USER\" -w" >&2
-  exit 4
+AUTH_MODE="${GROK_AUTH:-}"
+if [ -n "$AUTH_MODE" ] && [ "$AUTH_MODE" != "oauth" ] && [ "$AUTH_MODE" != "key" ]; then
+  echo "grok: invalid GROK_AUTH='$AUTH_MODE' (expected 'oauth' or 'key')" >&2
+  exit 2
+fi
+if [ -z "$AUTH_MODE" ]; then
+  if security find-generic-password -s "xai-oauth" -a "$USER" >/dev/null 2>&1; then
+    AUTH_MODE="oauth"
+  else
+    AUTH_MODE="key"
+  fi
+fi
+
+if [ "$AUTH_MODE" = "oauth" ]; then
+  # Sentinel only — the real token stays in Keychain; grok-proxy injects it.
+  KEY="grok-oauth-keychain"
+else
+  KEY="$(security find-generic-password -s "xai-api-key" -a "$USER" -w 2>/dev/null)"
+  if [ -z "$KEY" ]; then
+    echo "grok: no xAI credentials in Keychain." >&2
+    echo "Subscription (SuperGrok / X Premium+):  run $(dirname "$0")/grok-login" >&2
+    echo "API key:  security add-generic-password -U -s \"xai-api-key\" -a \"\$USER\" -w" >&2
+    exit 4
+  fi
 fi
 
 PROXY_PORT="${GROK_PROXY_PORT:-8317}"

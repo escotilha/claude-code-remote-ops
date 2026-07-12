@@ -171,6 +171,10 @@ var). Starts the proxy if it isn't running, reuses one that is, and stops its ow
 exit. The env overrides live only in this process — your normal `claude` sessions
 are untouched.
 
+The snippet below shows the API-key core; the repo file (`grok/grok`) additionally
+auto-selects the **OAuth subscription mode** described in the next section when
+`grok-login` tokens exist (override with `GROK_AUTH=oauth|key`).
+
 ```bash
 #!/usr/bin/env bash
 # grok — launch a fresh Claude Code session backed by xAI Grok.
@@ -219,13 +223,56 @@ claude "$@"
 exit $?
 ```
 
+## OAuth mode — run on a SuperGrok subscription, no API key
+
+xAI has a real OAuth surface (`auth.x.ai`, standard device-code grant, public
+desktop client ID) tied to SuperGrok / X Premium+ subscriptions — the same flow
+Hermes Agent and `opencode-grok-auth` use. The useful discovery (verified
+2026-07-12): **xAI's Anthropic-compatible `/v1/messages` endpoint accepts that
+OAuth bearer directly** — HTTP 200, streaming, tools, prompt caching, all of it.
+No request translation needed; only the auth header changes. Inference then burns
+subscription quota instead of pay-per-token API spend.
+
+How the pieces fit:
+
+- **`grok-login`** runs the device-code flow once: prints a verification URL
+  (headless-friendly — approve from any device, no callback port), polls until
+  you approve, and stores `{access_token, refresh_token, expires_at}` as a JSON
+  blob in Keychain (service `xai-oauth`). Tokens never touch disk.
+- **`grok`** auto-detects the Keychain entry and switches to OAuth mode. It does
+  NOT put the token in `ANTHROPIC_AUTH_TOKEN` — it passes the sentinel string
+  `grok-oauth-keychain` instead.
+- **`grok-proxy.mjs`** recognizes the sentinel on each request and swaps in the
+  real bearer from Keychain, refreshing it automatically 2 minutes before expiry
+  (with in-flight dedupe, and refresh-token rotation handled). Long sessions never
+  see an expired token — which matters because Claude Code reads its env auth
+  exactly once at launch.
+
+Why a sentinel instead of exporting the token? Two reasons: the token would
+outlive its expiry inside a long-running session env, and both auth modes can now
+coexist through one proxy instance — a `Bearer xai-...` API key passes through
+untouched, the sentinel gets swapped.
+
+Caveats: xAI allowlists the OAuth API surface by subscription tier — if inference
+returns 403 after a successful login, your tier isn't enabled and you're back to
+the API key. `security`/Keychain is macOS-only; on Linux adapt
+`keychainRead`/`keychainWrite` to `pass` or a `chmod 600` file. And on a
+**multi-user** machine, note that the sentinel is a well-known constant: any local
+user who can reach 127.0.0.1 can spend your subscription quota through the proxy
+(they can't extract the token — the upstream is pinned to `api.x.ai` — but
+consumption is enough to care on shared hosts; bind-limit or firewall accordingly).
+
 ## Install
 
 ```bash
 mkdir -p ~/bin && cd ~/bin
-# save grok-proxy.mjs and grok side by side
-chmod +x grok
-security add-generic-password -U -s "xai-api-key" -a "$USER" -w   # paste your xAI key
+# save grok-proxy.mjs, grok, and grok-login side by side
+chmod +x grok grok-login
+
+# Auth — either one (or both; OAuth wins when present):
+./grok-login                                                       # SuperGrok / X Premium+ subscription
+security add-generic-password -U -s "xai-api-key" -a "$USER" -w   # or paste your xAI API key
+
 grok -p "Reply with exactly: ok"   # smoke test
 ```
 
