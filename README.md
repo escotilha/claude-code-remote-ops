@@ -1,5 +1,7 @@
 # Claude Code remote-ops bundle
 
+🇧🇷 [Leia em português (Brasil): ABOUT.pt-BR.md](ABOUT.pt-BR.md)
+
 Built 2026-07-12 on a Mac Mini. Contents:
 
 - `docs/ssh-mcp-server.md` — what the SSH MCP server does and the security model.
