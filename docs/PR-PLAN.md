@@ -6,8 +6,8 @@ Concrete checklist derived from the 2026-07-12 review. Work in **priority order*
 
 | # | PR | Scope | Status |
 |---|-----|--------|--------|
-| 1 | **P0 security** | Gate SFTP, shell-meta reject, deny merge + fail-closed, host key, tests | **This PR** (`harden/p0-security`) |
-| 2 | **Audit log** | Append-only JSONL for every tool call | Next |
+| 1 | **P0 security** | Gate SFTP, shell-meta reject, deny merge + fail-closed, host key, tests | Open (`harden/p0-security`) |
+| 2 | **Audit log** | Append-only JSONL for every tool call | **This PR** (`feat/audit-log`) |
 | 3 | **Docs / OSS packaging** | Full English README, GitHub description/topics, SMOKE-TEST paths, SECURITY.md | Next |
 | 4 | **Grok proxy hardening** | No default body dumps, port health, Linux key path, model env | Next |
 | 5 | **CI** | `npm ci && npm test` on push; pin critical deps | With #2 or #3 |
@@ -50,11 +50,21 @@ Existing configs without `transfers` **lose** SFTP until they opt in. Existing c
 
 ### Checklist
 
-- [ ] Config: `auditLogPath` (default off, or `~/.local/state/ssh-mcp/audit.jsonl`)
-- [ ] Append one JSON line per `ssh_execute` / upload / download: time, connection name, tool, command or paths, gate allowed?, exit code, duration ms
-- [ ] Never log private key material or passwords
-- [ ] Unit test: mock fs append
-- [ ] Document rotation (logrotate snippet)
+- [x] Config: `auditLogPath` (absent = off; setup writes `~/.local/state/ssh-mcp/audit.jsonl`)
+- [x] Append one JSON line per tool call: time, connection name, tool, command or paths, gate, exit code, duration ms
+- [x] Never log private key material, passwords, host, or stdout/stderr
+- [x] Unit tests with injected append (`audit.test.ts`)
+- [x] Document rotation (`docs/audit-log.md` + logrotate / launchd notes)
+
+### Verify
+
+```bash
+cd ssh-mcp-server && npm test
+```
+
+### Risk / migration
+
+Opt-in via config (setup enables by default on regenerate). No behavior change when `auditLogPath` is omitted.
 
 ---
 

@@ -42,6 +42,10 @@ and screens every command **and transfer** before anything touches the wire.
 
 6. **Timeouts on everything** (default 30s) — a hung remote command can't wedge the agent.
 
+7. **Optional audit log** — append-only JSONL (`auditLogPath`) records gate decisions,
+   commands/paths, and exit codes without keys, hosts, or stdout. See
+   [audit-log.md](./audit-log.md).
+
 ## How to wire it
 
 ```

@@ -124,6 +124,15 @@ The config path can also come from the `SSH_MCP_CONFIG` env var instead of
 npx @modelcontextprotocol/inspector node dist/index.js --config ./ssh-config.json
 ```
 
+### Audit log
+
+Set `auditLogPath` to an append-only JSONL file (setup enables
+`~/.local/state/ssh-mcp/audit.jsonl` by default). Each tool call records
+timestamp, connection **name**, gate decision, command or paths, exit code /
+duration — never passwords, keys, host addresses, or stdout/stderr.
+
+Details and logrotate snippet: [`../docs/audit-log.md`](../docs/audit-log.md).
+
 ## Security notes
 
 - The agent operates at the SSH user's privilege level. Use a **least-privilege
@@ -132,13 +141,13 @@ npx @modelcontextprotocol/inspector node dist/index.js --config ./ssh-config.jso
   tight; do not rely on deny alone.
 - Keep the config file readable only by the user running the server
   (`chmod 600`). Prefer key auth over inline passwords.
+- Treat the audit log as sensitive (command strings / paths). Mode `0600`.
 - There is no built-in rate limiting. Run it on a trusted machine.
-- See `../docs/PR-PLAN.md` for the hardening roadmap (audit log, CI, …).
+- See `../docs/PR-PLAN.md` for the hardening roadmap (CI, packaging, …).
 
 ## Extending
 
 Natural next steps, each isolated to one module:
 
-- **Audit log**: append every tool call (connection, command, exit code).
 - **Interactive sessions**: tmux/shell-channel tool (current exec is request/response).
 - **Reverse-tunnel mode**: for NATed/outbound-only hosts.

@@ -33,6 +33,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CFG_DIR="$HOME/.config/ssh-mcp"
 CFG="$CFG_DIR/${ALIAS}.json"
 TRANSFER_ROOT="${SSH_MCP_TRANSFER_ROOT:-$HOME/agent-transfers/$ALIAS}"
+AUDIT_LOG="${SSH_MCP_AUDIT_LOG:-$HOME/.local/state/ssh-mcp/audit.jsonl}"
 
 echo "==> Resolving '$ALIAS' from ssh config…"
 command -v ssh >/dev/null || { echo "ssh not found"; exit 1; }
@@ -137,6 +138,7 @@ cat > "$CFG" <<JSON
   "defaultConnection": "$ALIAS",
   "defaultTimeoutMs": 30000,
   "includeBuiltinDeny": true,
+  "auditLogPath": "$AUDIT_LOG",
   "allow": [
 $ALLOW
   ],
@@ -177,6 +179,7 @@ echo "    ssh_execute  ->  uptime      (on '$ALIAS')"
 echo ""
 echo "Profile written: $PROFILE"
 echo "  SFTP: upload OFF; download only /var/log/* into $TRANSFER_ROOT"
+echo "  Audit log: $AUDIT_LOG (JSONL; no keys/stdout; see docs/audit-log.md)"
 echo "  Shell metacharacters blocked when allow list is active."
 echo "  Built-in deny patterns merged (rm -r/-f, dd, mkfs, shutdown, …)."
 if [ -n "$FINGERPRINT" ]; then

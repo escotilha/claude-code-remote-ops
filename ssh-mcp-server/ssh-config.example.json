@@ -2,6 +2,7 @@
   "defaultConnection": "prod",
   "defaultTimeoutMs": 30000,
   "includeBuiltinDeny": true,
+  "auditLogPath": "/home/you/.local/state/ssh-mcp/audit.jsonl",
   "allow": [
     "^ls ",
     "^df -h$",

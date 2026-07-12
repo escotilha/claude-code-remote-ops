@@ -86,6 +86,15 @@ export const ConfigSchema = z
     deny: z.array(z.string()).default([]),
     /** Merge built-in catastrophic deny patterns (default true). */
     includeBuiltinDeny: z.boolean().default(true),
+    /**
+     * Append-only JSONL audit path. Empty/absent = audit off.
+     * Example: "~/.local/state/ssh-mcp/audit.jsonl"
+     * Never logs passwords, keys, host addresses, or command stdout/stderr.
+     */
+    auditLogPath: z
+      .string()
+      .optional()
+      .describe("Path for append-only JSONL audit log (omit to disable)"),
     transfers: TransfersSchema.optional(),
     connections: z.record(z.string(), ConnectionSchema),
   })

@@ -125,8 +125,8 @@ sem compartilhar as chaves.
   npm test`, depois `bash setup-vps.sh <alias-ssh>` conecta a um host do seu
   `~/.ssh/config`.
 - `grok/grok-proxy.mjs` + `grok/grok` — proxy e launcher para Claude Code sobre Grok.
-- `docs/` — writeups (modelo de segurança do ssh-mcp; depuração Claude Code na xAI)
-  e o [plano de PRs](docs/PR-PLAN.md) de hardening.
+- `docs/` — writeups (modelo de segurança do ssh-mcp; depuração Claude Code na xAI),
+  [audit log](docs/audit-log.md), e o [plano de PRs](docs/PR-PLAN.md) de hardening.
 
 
 ## Segurança e licença
