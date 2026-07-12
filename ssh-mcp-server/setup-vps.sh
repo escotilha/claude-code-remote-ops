@@ -3,7 +3,7 @@
 # setup-vps.sh — wire ssh-mcp-server to a host you already reach over SSH.
 #
 # Run this ON a machine that can already `ssh <alias>` to the target (e.g. the
-# Mac Mini, which reaches the Contabo VPS as `vps-root` over Tailscale). It:
+# Mac Mini, which reaches the VPS as `vps-root` over Tailscale). It:
 #   1. reads the effective host/user/port/key from `ssh -G <alias>` — no guessing
 #   2. builds the server
 #   3. writes a config OUTSIDE the repo (never committed) with a read-only allow-list

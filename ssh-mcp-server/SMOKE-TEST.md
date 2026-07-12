@@ -1,7 +1,7 @@
 # ssh-mcp-server — smoke test & allow-list profiles
 
 Quick reference for bringing this server up on a machine that already reaches the
-target over SSH (e.g. the Mini → Contabo VPS `vps-root` over Tailscale), and
+target over SSH (e.g. the Mini → VPS `vps-root` over Tailscale), and
 verifying it end-to-end.
 
 ## 1. Install / regenerate config

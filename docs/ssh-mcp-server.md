@@ -43,7 +43,7 @@ and screens every command before anything touches the wire.
 Claude Code session (Mac Mini)
    └── stdio → node dist/index.js --config ~/.config/ssh-mcp/vps-root.json
                   └── SSH (ed25519 key) over Tailscale → root@<tailscale-ip>
-                                                          (Contabo VPS "<vps-hostname>")
+                                                          (VPS "<vps-hostname>")
 ```
 
 - Registered at **user scope** (`claude mcp add -s user`), so the tools load in every
