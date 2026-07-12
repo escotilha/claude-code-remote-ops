@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# grok — launch a fresh Claude Code session backed by xAI Grok.
+# Usage:  grok [any claude flags/args]
+
+set -uo pipefail
+
+KEY="$(security find-generic-password -s "xai-api-key" -a "$USER" -w 2>/dev/null)"
+if [ -z "$KEY" ]; then
+  echo "grok: no xAI key in Keychain (service 'xai-api-key', account $USER)." >&2
+  echo "Store it once with:" >&2
+  echo "  security add-generic-password -U -s \"xai-api-key\" -a \"\$USER\" -w" >&2
+  exit 4
+fi
+
+PROXY_PORT="${GROK_PROXY_PORT:-8317}"
+if ! nc -z 127.0.0.1 "$PROXY_PORT" 2>/dev/null; then
+  GROK_PROXY_PORT="$PROXY_PORT" node "$(dirname "$0")/grok-proxy.mjs" >>/tmp/grok-proxy.log 2>&1 &
+  PROXY_PID=$!
+  trap '[ -n "${PROXY_PID:-}" ] && kill "$PROXY_PID" 2>/dev/null' EXIT
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    nc -z 127.0.0.1 "$PROXY_PORT" 2>/dev/null && break
+    sleep 0.2
+  done
+  if ! nc -z 127.0.0.1 "$PROXY_PORT" 2>/dev/null; then
+    echo "grok: proxy failed to start (see /tmp/grok-proxy.log)" >&2
+    exit 5
+  fi
+fi
+
+export ANTHROPIC_BASE_URL="http://127.0.0.1:$PROXY_PORT"
+export ANTHROPIC_AUTH_TOKEN="$KEY"
+export API_TIMEOUT_MS="3000000"
+# A non-first-party base URL disables MCP tool search by default; restore it.
+export ENABLE_TOOL_SEARCH="true"
+
+# xAI does NOT auto-route claude-* model names — explicit mapping is required.
+export ANTHROPIC_MODEL="grok-4.20-0309-reasoning"
+export ANTHROPIC_DEFAULT_OPUS_MODEL="grok-4.20-0309-reasoning"
+export ANTHROPIC_DEFAULT_SONNET_MODEL="grok-4.20-0309-reasoning"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="grok-4.20-0309-non-reasoning"
+export ANTHROPIC_SMALL_FAST_MODEL="grok-4.20-0309-non-reasoning"
+
+# No exec: the EXIT trap must fire afterward to stop the proxy we started.
+claude "$@"
+exit $?

@@ -1,0 +1,14 @@
+{
+  "defaultConnection": "prod",
+  "defaultTimeoutMs": 30000,
+  "allow": ["^ls", "^df", "^cat ", "^systemctl status", "^docker ps"],
+  "deny": ["rm -rf", "shutdown", "reboot", "mkfs", "dd if="],
+  "connections": {
+    "prod": {
+      "host": "10.0.0.5",
+      "port": 22,
+      "username": "deploy",
+      "privateKeyPath": "/home/you/.ssh/id_ed25519"
+    }
+  }
+}
